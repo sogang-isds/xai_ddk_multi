@@ -55,8 +55,7 @@ python3 inference.py
 
 Ensure that the required input arguments are provided as per the script's requirements.
 
-> [!NOTE]
-> -----
+> [!NOTE] 
 > 
 > *   Make sure all dependencies are installed and included in the Dockerfile.
 > *   If you encounter issues with missing libraries, ensure you run system updates and install packages like `libgtk2.0-0` where necessary.
