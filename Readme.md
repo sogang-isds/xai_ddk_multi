@@ -10,7 +10,7 @@
 
 Before proceeding, download the required checkpoint (`.ckpt`) files from the following Google Drive link:
 
-**[Download Checkpoint Files](<Insert_Google_Drive_Link_Here>)**
+**[Download Checkpoint Files](<https://drive.google.com/drive/folders/1Jx5nYAj9NLMjANRd8b5_iQKZvYug2yiq?usp=sharing>)**
 
 Once downloaded, place the checkpoint files in the following directory within the project:
 
