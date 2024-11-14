@@ -14,5 +14,5 @@ torchvision==0.18.0
 transformers==4.41.0
 wandb==0.18.3
 loguru
-shap==0.46.0
+shap==0.42.1
 captum==0.7.0
