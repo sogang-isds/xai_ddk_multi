@@ -7,10 +7,12 @@ pytorch_lightning==2.4.0
 scikit_learn==1.3.2
 scipy
 seaborn==0.13.2
-torch==2.3.0+cu121
-torchaudio==2.3.0+cu121
+torch==2.3.0
+torchaudio==2.3.0
 torchmetrics==1.4.2
-torchvision==0.18.0+cu121
-transformers==4.41.0.dev0
+torchvision==0.18.0
+transformers==4.41.0
 wandb==0.18.3
 loguru
+shap==0.46.0
+captum==0.7.0

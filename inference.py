@@ -47,7 +47,7 @@ def get_severity(model, audio_filepath, gender):
 if __name__ == "__main__":
     
     args = ArgumentParser()
-    args.add_argument("--audio_filepath", type=str, default="/mnt/code/multi_input_model/nia_HC0002_50_0_1_5_002_1.wav", help="절대경로로 입력")
+    args.add_argument("--audio_filepath", type=str, default="./nia_HC0002_50_0_1_5_002_1.wav", help="절대경로로 입력")
     args.add_argument("--gender", type=str, default="F", help="F or M")
     
     args = args.parse_args()
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     audio_filepath = args.audio_filepath
     gender = 0 if args.gender == 'M' else 1
     
-    model = DDKWav2VecModel.load_from_checkpoint("multi_input_model.ckpt").to(device).eval()
+    model = DDKWav2VecModel.load_from_checkpoint("./checkpoints/multi_input_model.ckpt").to(device).eval()
     
     
     severity = get_severity(model, audio_filepath, gender)

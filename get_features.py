@@ -135,7 +135,7 @@ def get_prosody_respiration_features(path, threshold, min_dur):
     }
     
     vad_args = Namespace(**vad_args)
-    vad_path = "vad_model.ckpt"
+    vad_path = "./checkpoints/vad_model.ckpt"
     vad_model = VADModel.load_from_checkpoint(vad_path, args=vad_args)
     vad_model.to(device)
     
@@ -190,7 +190,7 @@ def get_intelligibility(path):
     
     intel_args = Namespace(**intel_args)
     
-    intel_path = "intelligibility_model.ckpt"
+    intel_path = "./checkpoints/intelligibility_model.ckpt"
     #self.model = PTKModel(n_classes=5, args=args)
     intel_model = PTKModel.load_from_checkpoint(intel_path,n_classes=5,args=intel_args)
     intel_model.to(device)
