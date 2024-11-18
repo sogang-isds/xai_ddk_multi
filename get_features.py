@@ -1,3 +1,4 @@
+from common import APP_ROOT
 from intelligibility_model import PTKModel
 from vad_model import VADModel
 from ddk.features import DDK
@@ -135,7 +136,7 @@ def get_prosody_respiration_features(path, threshold, min_dur):
     }
     
     vad_args = Namespace(**vad_args)
-    vad_path = "./checkpoints/vad_model.ckpt"
+    vad_path = os.path.join(APP_ROOT, "checkpoints/vad_model.ckpt")
     vad_model = VADModel.load_from_checkpoint(vad_path, args=vad_args)
     vad_model.to(device)
     
@@ -172,7 +173,7 @@ def get_prosody_respiration_features(path, threshold, min_dur):
     return ddk_rate, ddk_avg, ddk_std, ddk_pause_rate, pause_avg, ddk_pause_std
 
 def get_phonation_features(path):
-    ddk_path = os.path.abspath("./ddk")
+    ddk_path = os.path.join(APP_ROOT, "ddk")
     ddk_features = DDK(path, ddk_path)
     ddk_features = [0 if isnan(x) else x for x in ddk_features]
     
@@ -190,7 +191,7 @@ def get_intelligibility(path):
     
     intel_args = Namespace(**intel_args)
     
-    intel_path = "./checkpoints/intelligibility_model.ckpt"
+    intel_path = os.path.join(APP_ROOT, "checkpoints/intelligibility_model.ckpt")
     #self.model = PTKModel(n_classes=5, args=args)
     intel_model = PTKModel.load_from_checkpoint(intel_path,n_classes=5,args=intel_args)
     intel_model.to(device)

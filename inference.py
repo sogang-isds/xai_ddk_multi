@@ -1,3 +1,5 @@
+import os
+from common import APP_ROOT
 from multi_input_model import DDKWav2VecModel
 from get_features import get_features, my_padding
 
@@ -32,7 +34,7 @@ def get_severity(model, audio_filepath, gender):
     mel_x = model.db_converter(mel_x)
     
     feature = get_features(audio_filepath, gender)
-    scaler = joblib.load("scaler.save")
+    scaler = joblib.load(os.path.join(APP_ROOT, "scaler.save"))
     feature = scaler.transform([feature])
     feature = torch.tensor(feature).float().to(device)
     
@@ -59,9 +61,14 @@ if __name__ == "__main__":
     }
     
     audio_filepath = args.audio_filepath
+    
+    # relative path to absolute path
+    audio_filepath = os.path.abspath(audio_filepath)
+        
     gender = 0 if args.gender == 'M' else 1
     
-    model = DDKWav2VecModel.load_from_checkpoint("./checkpoints/multi_input_model.ckpt").to(device).eval()
+    model_path = os.path.join(APP_ROOT, "checkpoints/multi_input_model.ckpt")
+    model = DDKWav2VecModel.load_from_checkpoint(model_path).to(device).eval()
     
     
     severity = get_severity(model, audio_filepath, gender)

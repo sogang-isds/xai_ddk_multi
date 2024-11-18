@@ -1,3 +1,5 @@
+import os
+from common import APP_ROOT
 from multi_input_resnet_model import DDK_ResNet
 
 import pytorch_lightning as pl
@@ -45,7 +47,7 @@ class DDKWav2VecModel(pl.LightningModule):
                                               n_mels=80)
         self.db_converter = AmplitudeToDB()
 
-        self.labels = np.load("labels.npy")
+        self.labels = np.load(os.path.join(APP_ROOT, "labels.npy"))
         self.labels = torch.from_numpy(self.labels)
         
         # self.validation_step_outputs = []  #for on_validation_end
