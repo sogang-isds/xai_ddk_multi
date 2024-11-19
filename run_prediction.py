@@ -12,6 +12,7 @@ from inference import prepare_data
 from kaist.evaluate_shap import (
     cal_scores,
     get_strengths_and_weaknesses,
+    get_majority_key,
     majority_vote_by_id,
 )
 from kaist.save_data import FeaturesGenerator
@@ -29,7 +30,7 @@ class ExplainDDK:
         custom_model = CustomNet(self.model)
 
         self.scaler = joblib.load(os.path.join(APP_ROOT, "scaler.save"))
-        
+
         background_data = self.load_background_data()
         self.explainer = shap.DeepExplainer(custom_model, background_data)
 
@@ -56,8 +57,6 @@ class ExplainDDK:
         df2 = pd.read_csv(
             os.path.join(APP_ROOT, "kaist/logs/test_data_2.csv"), dtype={"task_id": str}
         )
-
-        
 
         # df1과 df2에서 첫 두 컬럼(id, task_id)을 제외한 특성 데이터 추출 및 concat
         df1_features = df1.iloc[:, 2:].values.astype(
@@ -120,25 +119,38 @@ class ExplainDDK:
 
         # 결과 저장 리스트
         predicted_classes = []
-
+        
         # 각 샘플에 대해 strength와 weakness를 예측
         id = "test"
+
+        output_dict = {}
         for idx, row in shap_df_class_2.iterrows():
             # id = row['id']
-            # task_id = row['task_id']
+            task_id = row['task_id']
+            severity = row["severity"]
+            
+            task_dict = {}
+            print(task_id)
 
-            sample_df = pd.DataFrame([row], columns=df.columns, index=[0])
+            sample_df = pd.DataFrame([row], columns=features, index=[0])
+            
+            feature_dict = sample_df.to_dict(orient="records")[0]
+            print(feature_dict)
+            task_dict["features"] = feature_dict
             # sample_df = df[features].iloc[[idx]]
             feature_score, _ = cal_scores(sample_df, normal_mean, severe_mean)
 
             print(feature_score)
+            task_dict["feature_score"] = feature_score
 
             # Strength와 Weakness 구하기
             feature_area = get_strengths_and_weaknesses(feature_score)
+            print(feature_area)
+            task_dict["feature_area"] = feature_area
 
             # 우수 영역과 개선 영역을 예측값으로 변환
             prediction = {}
-            for feature in df.columns:
+            for feature in features:
                 if feature in feature_area["strength"]:
                     prediction[feature] = 0  # strength는 우수(0)
                 elif feature in feature_area["weakness"]:
@@ -147,12 +159,12 @@ class ExplainDDK:
                     prediction[feature] = 1  # 나머지는 보통(1)
 
             # 예측된 값 저장
-            predicted_classes.append([id, prediction])
-
-        # print(predicted_classes)
+            predicted_classes.append([id, severity, prediction])
+            
+            output_dict[task_id] = task_dict
 
         # 예측값 DataFrame으로 변환
-        predicted_df = pd.DataFrame(predicted_classes, columns=["id", "predictions"])
+        predicted_df = pd.DataFrame(predicted_classes, columns=["id", "severity", "predictions"])
 
         for feature in features:
             predicted_df[f"{feature}_predicted"] = predicted_df["predictions"].apply(
@@ -163,10 +175,17 @@ class ExplainDDK:
         majority_df = majority_vote_by_id(predicted_df, features)
 
         # df to dict
-        df_dict = majority_df.to_dict(orient="records")
+        df_dict = majority_df.to_dict(orient="records")[0]
+        
+        final_severity = get_majority_key(predicted_df['severity'].values)
+        print(f"Final Severity: {final_severity}")
+        
+        df_dict['final_severity'] = final_severity
+        
         print(df_dict)
+        output_dict['summary'] = df_dict
 
-        return df_dict
+        return output_dict
 
     def explain_ddk(self, audio_filepath, gender, task_id):
         audio = prepare_data(audio_filepath).to(device)
@@ -185,6 +204,13 @@ class ExplainDDK:
 
         concat_x = torch.cat([spec_w2v_x, features], dim=-1)
 
+        out = self.model(mel_x, audio, features)
+        severity = torch.argmax(out, dim=-1)[0]
+        severity = severity.item()  # tensor to int
+
+        #
+        # SHAP values 계산
+        #
         shap_values = self.explainer.shap_values(concat_x)
 
         for i in range(len(shap_values)):
@@ -211,13 +237,11 @@ class ExplainDDK:
             result = {
                 # 'id': id,
                 "task_id": task_id,
+                "severity": severity,
                 "shap_class": class_idx,
             }
             result.update(shap_dict)
             results.append(result)
-
-        out = self.model(mel_x, audio, features)
-        severity = torch.argmax(out, dim=-1)[0]
 
         print(f"[Inference Result] {severity} ({idx2sev[int(severity)]})")
 
@@ -231,9 +255,9 @@ class ExplainDDK:
 
         results_df = pd.DataFrame(results)
 
-        self.analyze_shap(results_df)
+        result_dict = self.analyze_shap(results_df)
 
-        return results
+        return result_dict
 
 
 if __name__ == "__main__":
@@ -273,9 +297,10 @@ if __name__ == "__main__":
     explain_ddk = ExplainDDK(
         model_path=os.path.join(APP_ROOT, "checkpoints/multi_input_model.ckpt")
     )
-    # explain_ddk.load_shap_data()
 
-    # severity = explain_ddk.explain_ddk(audio_filepath, gender)
     results = explain_ddk.exaplain_ddks(files, gender)
-
-    # print(f"[Inference Result] {severity} ({idx2sev[int(severity)]})")
+    
+    # save result to json
+    import json
+    with open("result.json", "w") as f:
+        json.dump(results, f, indent=4, ensure_ascii=False)

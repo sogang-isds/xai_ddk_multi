@@ -76,6 +76,19 @@ def get_strengths_and_weaknesses(feature_score):
     return feature_area
 
 
+# 카운트 값이 같을 때 key가 더 큰 값을 선택
+def select_larger_key(counter_result):
+    max_count = max(counter_result.values())  # 최대 카운트를 구함
+    candidates = [key for key, count in counter_result.items() if count == max_count]  # 최대 카운트에 해당하는 key들
+    return max(candidates)  # key 값 중 가장 큰 값을 반환
+
+
+def get_majority_key(input_list):
+    input_count = Counter(input_list)
+    majority_key = select_larger_key(input_count)
+    return int(majority_key)
+
+
 def majority_vote_by_id(predicted_df, features):
     id_predictions = []
     
@@ -85,7 +98,10 @@ def majority_vote_by_id(predicted_df, features):
         for feature in features:
             # 동일한 id에 대해 각 task_id에서의 예측값을 모아서 다수결 계산
             feature_predictions = group[f'{feature}_predicted'].values
-            majority_vote = Counter(feature_predictions).most_common(1)[0][0]
+            
+            majority_vote = get_majority_key(feature_predictions)
+            # majority_vote = Counter(feature_predictions).most_common(1)[0][0]
+            
             id_prediction[f'{feature}_majority'] = majority_vote
         
         id_predictions.append(id_prediction)
