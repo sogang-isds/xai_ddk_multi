@@ -119,21 +119,21 @@ class ExplainDDK:
 
         # 결과 저장 리스트
         predicted_classes = []
-        
+
         # 각 샘플에 대해 strength와 weakness를 예측
         id = "test"
 
         output_dict = {}
         for idx, row in shap_df_class_2.iterrows():
             # id = row['id']
-            task_id = row['task_id']
+            task_id = row["task_id"]
             severity = row["severity"]
-            
+
             task_dict = {}
             print(task_id)
 
             sample_df = pd.DataFrame([row], columns=features, index=[0])
-            
+
             feature_dict = sample_df.to_dict(orient="records")[0]
             print(feature_dict)
             task_dict["features"] = feature_dict
@@ -160,11 +160,13 @@ class ExplainDDK:
 
             # 예측된 값 저장
             predicted_classes.append([id, severity, prediction])
-            
+
             output_dict[task_id] = task_dict
 
         # 예측값 DataFrame으로 변환
-        predicted_df = pd.DataFrame(predicted_classes, columns=["id", "severity", "predictions"])
+        predicted_df = pd.DataFrame(
+            predicted_classes, columns=["id", "severity", "predictions"]
+        )
 
         for feature in features:
             predicted_df[f"{feature}_predicted"] = predicted_df["predictions"].apply(
@@ -176,14 +178,13 @@ class ExplainDDK:
 
         # df to dict
         df_dict = majority_df.to_dict(orient="records")[0]
-        
-        final_severity = get_majority_key(predicted_df['severity'].values)
+
+        final_severity = get_majority_key(predicted_df["severity"].values)
         print(f"Final Severity: {final_severity}")
-        
-        df_dict['final_severity'] = final_severity
-        
+
         print(df_dict)
-        output_dict['summary'] = df_dict
+        output_dict["summary"] = df_dict
+        output_dict["severity"] = final_severity
 
         return output_dict
 
@@ -256,6 +257,7 @@ class ExplainDDK:
         results_df = pd.DataFrame(results)
 
         result_dict = self.analyze_shap(results_df)
+        result_dict["gender"] = gender
 
         return result_dict
 
@@ -299,8 +301,9 @@ if __name__ == "__main__":
     )
 
     results = explain_ddk.exaplain_ddks(files, gender)
-    
+
     # save result to json
     import json
+
     with open("result.json", "w") as f:
         json.dump(results, f, indent=4, ensure_ascii=False)
