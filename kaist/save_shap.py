@@ -1,4 +1,5 @@
 import sys
+from typing import List
 
 from common import APP_ROOT
 sys.path.append('../')
@@ -42,11 +43,11 @@ class CustomNet(nn.Module):
         return out
 
 
-def generate_column_dict(column_names, values):
+def generate_column_dict(column_names: List, values: List, round_digits=3) -> dict:
     value_dict = {}
     for column, value in zip(column_names, values):
         if isinstance(value, float):
-            value_dict[column] = round(value, 3)
+            value_dict[column] = round(value, round_digits)
         else:
             value_dict[column] = value
 
@@ -112,7 +113,7 @@ if __name__ == "__main__":
 
         # SHAP 값을 저장 및 순위 생성
         for class_idx, shap_list in enumerate(shap_values):
-            shap_dict = generate_column_dict(column_names, shap_list)
+            shap_dict = generate_column_dict(column_names, shap_list, round_digits=5)
 
             # 절대값 기준으로 feature 순위 계산
             sorted_features = sorted(shap_dict.items(), key=lambda x: abs(x[1]), reverse=True)

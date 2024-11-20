@@ -79,7 +79,7 @@ class ExplainDDK:
 
         return background_data
 
-    def analyze_shap(self, df):
+    def analyze_shap(self, df, features_df):
         df_labels = pd.read_csv(os.path.join(APP_ROOT, "kaist/logs/test_labels.csv"))
         shap_df = pd.read_csv(os.path.join(APP_ROOT, "kaist/logs/test_shap.csv"))
 
@@ -131,16 +131,24 @@ class ExplainDDK:
 
             task_dict = {}
             print(task_id)
+            
+            # task_id로 features_df에서 해당 행을 추출
+            feature_df = features_df[features_df["task_id"] == task_id]
+            # feature columns에 대해서만 남김
+            feature_df = feature_df[features]
+            feature_dict = feature_df.to_dict(orient="records")[0]
+            print(f'Feature Dict: {feature_dict}')
+            task_dict["features"] = feature_dict
 
             sample_df = pd.DataFrame([row], columns=features, index=[0])
 
-            feature_dict = sample_df.to_dict(orient="records")[0]
-            print(feature_dict)
-            task_dict["features"] = feature_dict
+            shap_dict = sample_df.to_dict(orient="records")[0]
+            print(f'Shap Dict: {shap_dict}')
+            task_dict["shap_values"] = shap_dict
+            
             # sample_df = df[features].iloc[[idx]]
             feature_score, _ = cal_scores(sample_df, normal_mean, severe_mean)
-
-            print(feature_score)
+            print(f'Feature Score: {feature_score}')
             task_dict["feature_score"] = feature_score
 
             # Strength와 Weakness 구하기
@@ -193,21 +201,29 @@ class ExplainDDK:
         mel_x = self.model.mel_spectrogram(audio.unsqueeze(0))
         mel_x = self.model.db_converter(mel_x)
 
-        spec_w2v_x, features = self.features_generator.get_features(
+        spec_w2v_x, raw_features = self.features_generator.get_features(
             audio_filepath, gender
         )
 
         spec_w2v_x = torch.tensor(spec_w2v_x).float().to(device)
         spec_w2v_x = spec_w2v_x.unsqueeze(dim=0)
 
-        features = self.scaler.transform([features])
-        features = torch.tensor(features).float().to(device)
+        scaled_features = self.scaler.transform([raw_features])
+        scaled_features = torch.tensor(scaled_features).float().to(device)
 
-        concat_x = torch.cat([spec_w2v_x, features], dim=-1)
+        concat_x = torch.cat([spec_w2v_x, scaled_features], dim=-1)
 
-        out = self.model(mel_x, audio, features)
+        out = self.model(mel_x, audio, scaled_features)
         severity = torch.argmax(out, dim=-1)[0]
         severity = severity.item()  # tensor to int
+        
+        filtered_features = generate_column_dict(self.column_names, raw_features, round_digits=3)
+        
+        # self.column_names와 raw_features를 합혀서 dictionary로 변환
+        feature_dict = {
+            'task_id': task_id,
+        }
+        feature_dict.update(filtered_features)
 
         #
         # SHAP values 계산
@@ -225,7 +241,7 @@ class ExplainDDK:
 
         # SHAP 값을 저장 및 순위 생성
         for class_idx, shap_list in enumerate(shap_values):
-            shap_dict = generate_column_dict(self.column_names, shap_list)
+            shap_dict = generate_column_dict(self.column_names, shap_list, round_digits=5)
 
             # 절대값 기준으로 feature 순위 계산
             sorted_features = sorted(
@@ -246,17 +262,20 @@ class ExplainDDK:
 
         print(f"[Inference Result] {severity} ({idx2sev[int(severity)]})")
 
-        return results
+        return results, feature_dict
 
     def exaplain_ddks(self, audio_files, gender):
         results = []
+        features = []
         for task_id, audio_file in audio_files:
-            result = self.explain_ddk(audio_file, gender, task_id)
+            result, feature_dict = self.explain_ddk(audio_file, gender, task_id)
             results.extend(result)
-
+            features.append(feature_dict)
+        
         results_df = pd.DataFrame(results)
+        features_df = pd.DataFrame(features)
 
-        result_dict = self.analyze_shap(results_df)
+        result_dict = self.analyze_shap(results_df, features_df)
         result_dict["gender"] = gender
 
         return result_dict
