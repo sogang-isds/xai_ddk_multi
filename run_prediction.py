@@ -1,10 +1,10 @@
 from argparse import ArgumentParser
 import os
-
 import joblib
 import numpy as np
 import pandas as pd
 import shap
+from captum.attr import IntegratedGradients
 import torch
 
 from common import APP_ROOT
@@ -19,6 +19,7 @@ from kaist.save_data import FeaturesGenerator
 from kaist.save_ig import CustomNet
 from kaist.save_shap import generate_column_dict
 from multi_input_model import DDKWav2VecModel
+from utils.utils import save_to_json
 
 
 class ExplainDDK:
@@ -27,12 +28,15 @@ class ExplainDDK:
         self.model = DDKWav2VecModel.load_from_checkpoint(model_path).to(device).eval()
         self.features_generator = FeaturesGenerator(self.model)
 
-        custom_model = CustomNet(self.model)
+        self.custom_model = CustomNet(self.model)
 
         self.scaler = joblib.load(os.path.join(APP_ROOT, "scaler.save"))
 
         background_data = self.load_background_data()
-        self.explainer = shap.DeepExplainer(custom_model, background_data)
+
+        self.explainer = {}
+        self.explainer["shap"] = shap.DeepExplainer(self.custom_model, background_data)
+        self.explainer["ig"] = IntegratedGradients(self.custom_model)
 
         self.column_names = [
             "gender",
@@ -79,7 +83,27 @@ class ExplainDDK:
 
         return background_data
 
-    def analyze_shap(self, df, features_df):
+    def load_baseline_data(self):
+        df1 = pd.read_csv(
+            os.path.join(APP_ROOT, "kaist/logs/test_data_1.csv"), dtype={"task_id": str}
+        )
+        df2 = pd.read_csv(
+            os.path.join(APP_ROOT, "kaist/logs/test_data_2.csv"), dtype={"task_id": str}
+        )
+
+        df1_features = df1.iloc[:, 2:].values.astype(np.float32)
+        df2_features = self.scaler.transform(df2.iloc[:, 2:].values.astype(np.float32))
+        df1_mean = np.mean(df1.iloc[:, 2:].values.astype(np.float32), axis=0)
+        df2_mean = np.mean(
+            self.scaler.transform(df2.iloc[:, 2:].values.astype(np.float32)), axis=0
+        )
+        baseline_data_df1 = torch.tensor(df1_mean).float().to(device).unsqueeze(0)
+        baseline_data_df2 = torch.tensor(df2_mean).float().to(device).unsqueeze(0)
+        baseline = torch.cat([baseline_data_df1, baseline_data_df2], dim=1)
+
+        return baseline
+
+    def analyze_result(self, df, features_df):
         df_labels = pd.read_csv(os.path.join(APP_ROOT, "kaist/logs/test_labels.csv"))
         shap_df = pd.read_csv(os.path.join(APP_ROOT, "kaist/logs/test_shap.csv"))
 
@@ -131,24 +155,24 @@ class ExplainDDK:
 
             task_dict = {}
             print(task_id)
-            
+
             # task_id로 features_df에서 해당 행을 추출
             feature_df = features_df[features_df["task_id"] == task_id]
             # feature columns에 대해서만 남김
             feature_df = feature_df[features]
             feature_dict = feature_df.to_dict(orient="records")[0]
-            print(f'Feature Dict: {feature_dict}')
+            print(f"Feature Dict: {feature_dict}")
             task_dict["features"] = feature_dict
 
             sample_df = pd.DataFrame([row], columns=features, index=[0])
 
             shap_dict = sample_df.to_dict(orient="records")[0]
-            print(f'Shap Dict: {shap_dict}')
+            print(f"Shap Dict: {shap_dict}")
             task_dict["shap_values"] = shap_dict
-            
+
             # sample_df = df[features].iloc[[idx]]
             feature_score, _ = cal_scores(sample_df, normal_mean, severe_mean)
-            print(f'Feature Score: {feature_score}')
+            print(f"Feature Score: {feature_score}")
             task_dict["feature_score"] = feature_score
 
             # Strength와 Weakness 구하기
@@ -196,7 +220,7 @@ class ExplainDDK:
 
         return output_dict
 
-    def explain_ddk(self, audio_filepath, gender, task_id):
+    def predict_ddk(self, audio_filepath, gender, task_id):
         audio = prepare_data(audio_filepath).to(device)
         mel_x = self.model.mel_spectrogram(audio.unsqueeze(0))
         mel_x = self.model.db_converter(mel_x)
@@ -216,19 +240,62 @@ class ExplainDDK:
         out = self.model(mel_x, audio, scaled_features)
         severity = torch.argmax(out, dim=-1)[0]
         severity = severity.item()  # tensor to int
-        
-        filtered_features = generate_column_dict(self.column_names, raw_features, round_digits=3)
-        
+
+        filtered_features = generate_column_dict(
+            self.column_names, raw_features, round_digits=3
+        )
+
         # self.column_names와 raw_features를 합혀서 dictionary로 변환
         feature_dict = {
-            'task_id': task_id,
+            "task_id": task_id,
         }
         feature_dict.update(filtered_features)
+        print(f"[Inference Result] {severity} ({idx2sev[int(severity)]})")
 
+        return severity, feature_dict, concat_x
+
+    def explain_ddk_ig(self, severity, concat_x, task_id):
+        #
+        # IG values 계산
+        #
+        baseline = self.load_baseline_data()
+        explainer = self.explainer["ig"]
+
+        results = []
+
+        # 각 클래스(0, 1, 2)에 대해 Integrated Gradients 계산
+        for class_idx in [0, 1, 2]:
+            attributions, _ = explainer.attribute(
+                concat_x,
+                target=class_idx,
+                return_convergence_delta=True,
+                baselines=baseline,
+            )
+            # 첫 128개 값은 제거 후 저장
+            ig_values = attributions.squeeze().cpu().detach().numpy()[128:]
+
+            # 결과 저장
+            result = {
+                # 'id': id,
+                "task_id": task_id,
+                "severity": severity,
+                "shap_class": class_idx,
+            }
+
+            value_dict = generate_column_dict(
+                self.column_names, ig_values, round_digits=5
+            )
+            result.update(value_dict)
+            results.append(result)
+
+        return results
+
+    def explain_ddk_shap(self, severity, concat_x, task_id):
         #
         # SHAP values 계산
         #
-        shap_values = self.explainer.shap_values(concat_x)
+        explainer = self.explainer["shap"]
+        shap_values = explainer.shap_values(concat_x)
 
         for i in range(len(shap_values)):
             shap_values[i] = shap_values[i][0]
@@ -241,7 +308,9 @@ class ExplainDDK:
 
         # SHAP 값을 저장 및 순위 생성
         for class_idx, shap_list in enumerate(shap_values):
-            shap_dict = generate_column_dict(self.column_names, shap_list, round_digits=5)
+            shap_dict = generate_column_dict(
+                self.column_names, shap_list, round_digits=5
+            )
 
             # 절대값 기준으로 feature 순위 계산
             sorted_features = sorted(
@@ -260,25 +329,42 @@ class ExplainDDK:
             result.update(shap_dict)
             results.append(result)
 
-        print(f"[Inference Result] {severity} ({idx2sev[int(severity)]})")
-
-        return results, feature_dict
+        return results
 
     def exaplain_ddks(self, audio_files, gender):
-        results = []
+        result_shap_list = []
+        result_ig_list = []
         features = []
         for task_id, audio_file in audio_files:
-            result, feature_dict = self.explain_ddk(audio_file, gender, task_id)
-            results.extend(result)
+            severity, feature_dict, concat_x = self.predict_ddk(
+                audio_file, gender, task_id
+            )
+            # SHAP values 계산
+            result_shap = self.explain_ddk_shap(severity, concat_x, task_id)
+            result_shap_list.extend(result_shap)
+
+            # IG values 계산
+            result_ig = self.explain_ddk_ig(severity, concat_x, task_id)
+            result_ig_list.extend(result_ig)
+
+            # feature 저장
             features.append(feature_dict)
-        
-        results_df = pd.DataFrame(results)
+
+        result_shap_df = pd.DataFrame(result_shap_list)
+        result_ig_df = pd.DataFrame(result_ig_list)
         features_df = pd.DataFrame(features)
 
-        result_dict = self.analyze_shap(results_df, features_df)
-        result_dict["gender"] = gender
+        shap_dict = self.analyze_result(result_shap_df, features_df)
+        shap_dict["gender"] = gender
 
-        return result_dict
+        ig_dict = self.analyze_result(result_ig_df, features_df)
+        ig_dict["gender"] = gender
+        
+        output_dict = {}
+        output_dict["shap"] = shap_dict
+        output_dict["ig"] = ig_dict
+
+        return output_dict
 
 
 if __name__ == "__main__":
@@ -319,10 +405,11 @@ if __name__ == "__main__":
         model_path=os.path.join(APP_ROOT, "checkpoints/multi_input_model.ckpt")
     )
 
-    results = explain_ddk.exaplain_ddks(files, gender)
+    result_dict = explain_ddk.exaplain_ddks(files, gender)
+    shap_result = result_dict["shap"]
+    ig_result = result_dict["ig"]
 
     # save result to json
-    import json
-
-    with open("result.json", "w") as f:
-        json.dump(results, f, indent=4, ensure_ascii=False)
+    save_to_json(result_dict, "result_all.json")
+    save_to_json(shap_result, "result_shap.json")
+    save_to_json(ig_result, "result_ig.json")
