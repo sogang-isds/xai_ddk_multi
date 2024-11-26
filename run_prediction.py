@@ -21,6 +21,8 @@ from kaist.save_shap import generate_column_dict
 from multi_input_model import DDKWav2VecModel
 from utils.utils import save_to_json
 
+def filter_dict(d, keys):
+    return {k: v for k, v in d.items() if k in keys}
 
 class ExplainDDK:
     def __init__(self, model_path):
@@ -46,6 +48,16 @@ class ExplainDDK:
             "avg_energy",
             "var_energy",
             "max_energy",
+            "ddk_rate",
+            "ddk_average",
+            "ddk_std",
+            "ddk_pause_rate",
+            "ddk_pause_average",
+            "ddk_pause_std",
+        ]
+
+        # 분석할 피쳐 리스트
+        self.target_features = [
             "ddk_rate",
             "ddk_average",
             "ddk_std",
@@ -103,7 +115,20 @@ class ExplainDDK:
 
         return baseline
 
-    def analyze_result(self, df, features_df):
+    def get_feature_dict(self, features_df):
+        output_dict = {}
+        
+        for idx, row in features_df.iterrows():
+            task_id = row["task_id"]
+            feature_dict = row.to_dict()
+            
+            filtered_dict = filter_dict(feature_dict, self.target_features)
+            
+            output_dict[task_id] = filtered_dict
+
+        return output_dict
+
+    def analyze_result(self, df):
         df_labels = pd.read_csv(os.path.join(APP_ROOT, "kaist/logs/test_labels.csv"))
         shap_df = pd.read_csv(os.path.join(APP_ROOT, "kaist/logs/test_shap.csv"))
 
@@ -117,15 +142,7 @@ class ExplainDDK:
         normal_mean = {}
         severe_mean = {}
 
-        # 분석할 피쳐 리스트
-        features = [
-            "ddk_rate",
-            "ddk_average",
-            "ddk_std",
-            "ddk_pause_rate",
-            "ddk_pause_average",
-            "ddk_pause_std",
-        ]
+        features = self.target_features
 
         for feature in features:
             # severity가 0인 경우의 shap_class 2 saliency 평균 (Normal)
@@ -156,19 +173,11 @@ class ExplainDDK:
             task_dict = {}
             print(task_id)
 
-            # task_id로 features_df에서 해당 행을 추출
-            feature_df = features_df[features_df["task_id"] == task_id]
-            # feature columns에 대해서만 남김
-            feature_df = feature_df[features]
-            feature_dict = feature_df.to_dict(orient="records")[0]
-            print(f"Feature Dict: {feature_dict}")
-            task_dict["features"] = feature_dict
-
             sample_df = pd.DataFrame([row], columns=features, index=[0])
 
             shap_dict = sample_df.to_dict(orient="records")[0]
             print(f"Shap Dict: {shap_dict}")
-            task_dict["shap_values"] = shap_dict
+            task_dict["xai_values"] = shap_dict
 
             # sample_df = df[features].iloc[[idx]]
             feature_score, _ = cal_scores(sample_df, normal_mean, severe_mean)
@@ -214,11 +223,12 @@ class ExplainDDK:
         final_severity = get_majority_key(predicted_df["severity"].values)
         print(f"Final Severity: {final_severity}")
 
+        # id 칼럼을 삭제
+        del df_dict["id"]
         print(df_dict)
         output_dict["summary"] = df_dict
-        output_dict["severity"] = final_severity
 
-        return output_dict
+        return output_dict, final_severity
 
     def predict_ddk(self, audio_filepath, gender, task_id):
         audio = prepare_data(audio_filepath).to(device)
@@ -354,15 +364,18 @@ class ExplainDDK:
         result_ig_df = pd.DataFrame(result_ig_list)
         features_df = pd.DataFrame(features)
 
-        shap_dict = self.analyze_result(result_shap_df, features_df)
-        shap_dict["gender"] = gender
+        shap_dict, final_severity = self.analyze_result(result_shap_df)
 
-        ig_dict = self.analyze_result(result_ig_df, features_df)
-        ig_dict["gender"] = gender
-        
+        ig_dict, _ = self.analyze_result(result_ig_df)
+
+        feature_dict = self.get_feature_dict(features_df)
+
         output_dict = {}
+        output_dict["features"] = feature_dict
         output_dict["shap"] = shap_dict
         output_dict["ig"] = ig_dict
+        output_dict["severity"] = final_severity
+        output_dict["gender"] = gender
 
         return output_dict
 
