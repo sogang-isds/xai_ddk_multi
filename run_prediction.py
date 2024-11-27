@@ -26,8 +26,9 @@ def filter_dict(d, keys):
 
 class ExplainDDK:
     def __init__(self, model_path):
-
-        self.model = DDKWav2VecModel.load_from_checkpoint(model_path).to(device).eval()
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        self.model = DDKWav2VecModel.load_from_checkpoint(model_path).to(self.device).eval()
         self.features_generator = FeaturesGenerator(self.model)
 
         self.custom_model = CustomNet(self.model)
@@ -83,12 +84,12 @@ class ExplainDDK:
         )  # df2에서 id, task_id 제외
 
         background_data_df1 = (
-            torch.tensor(df1_features).float().to(device)
+            torch.tensor(df1_features).float().to(self.device)
         )  # df1 데이터를 텐서로 변환
         background_data_df2 = self.scaler.transform(
             df2_features
         )  # df2는 스케일링 후 텐서로 변환
-        background_data_df2 = torch.tensor(background_data_df2).float().to(device)
+        background_data_df2 = torch.tensor(background_data_df2).float().to(self.device)
         background_data = torch.cat(
             [background_data_df1, background_data_df2], dim=1
         )  # concat된 배경 데이터
@@ -109,8 +110,8 @@ class ExplainDDK:
         df2_mean = np.mean(
             self.scaler.transform(df2.iloc[:, 2:].values.astype(np.float32)), axis=0
         )
-        baseline_data_df1 = torch.tensor(df1_mean).float().to(device).unsqueeze(0)
-        baseline_data_df2 = torch.tensor(df2_mean).float().to(device).unsqueeze(0)
+        baseline_data_df1 = torch.tensor(df1_mean).float().to(self.device).unsqueeze(0)
+        baseline_data_df2 = torch.tensor(df2_mean).float().to(self.device).unsqueeze(0)
         baseline = torch.cat([baseline_data_df1, baseline_data_df2], dim=1)
 
         return baseline
@@ -231,7 +232,7 @@ class ExplainDDK:
         return output_dict, final_severity
 
     def predict_ddk(self, audio_filepath, gender, task_id):
-        audio = prepare_data(audio_filepath).to(device)
+        audio = prepare_data(audio_filepath).to(self.device)
         mel_x = self.model.mel_spectrogram(audio.unsqueeze(0))
         mel_x = self.model.db_converter(mel_x)
 
@@ -239,11 +240,11 @@ class ExplainDDK:
             audio_filepath, gender
         )
 
-        spec_w2v_x = torch.tensor(spec_w2v_x).float().to(device)
+        spec_w2v_x = torch.tensor(spec_w2v_x).float().to(self.device)
         spec_w2v_x = spec_w2v_x.unsqueeze(dim=0)
 
         scaled_features = self.scaler.transform([raw_features])
-        scaled_features = torch.tensor(scaled_features).float().to(device)
+        scaled_features = torch.tensor(scaled_features).float().to(self.device)
 
         concat_x = torch.cat([spec_w2v_x, scaled_features], dim=-1)
 
@@ -400,8 +401,6 @@ if __name__ == "__main__":
     args = args.parse_args()
 
     idx2sev = {0: "normal", 1: "mild-to-moderate", 2: "severe"}
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     audio_filepath = args.audio_filepath
 

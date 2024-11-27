@@ -16,3 +16,6 @@ wandb==0.18.3
 loguru
 shap==0.42.1
 captum==0.7.0
+
+python-dotenv
+celery~=5.4.0
