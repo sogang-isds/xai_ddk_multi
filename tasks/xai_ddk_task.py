@@ -29,41 +29,31 @@ explain_ddk = ExplainDDK(
 
 
 @app.task(bind=True)
-def recognize_ddk(self, file_path, gender, age, task):
+def recognize_ddk_multi(self, file_paths, gender):
     # shorten the task_id
     task_id = self.request.id
     task_id = task_id[:8]
 
 
     try:
-        gender = convert_gender(int(gender))
-        age = convert_age(int(age))
-
         t = tempfile.TemporaryDirectory()
         output_path = t.name
 
-        # HTTP URL로 넘어온 경우 파일 다운로드
-        if file_path.startswith("http"):
-            res = requests.get(file_path, allow_redirects=True, verify=VERIFY_SSL)
-            file = os.path.basename(file_path)
+        files = []
+        for task_id, file_path in file_paths:
+            # HTTP URL로 넘어온 경우 파일 다운로드
+            if file_path.startswith("http"):
+                res = requests.get(file_path, allow_redirects=True, verify=VERIFY_SSL)
+                file = os.path.basename(file_path)
 
-            file_path = os.path.join(output_path, file)
+                file_path = os.path.join(output_path, file)
 
-            with open(file_path, "wb") as f:
-                f.write(res.content)
+                with open(file_path, "wb") as f:
+                    f.write(res.content)
 
-        severity, shap_dict, feature_dict, score_dict, subsystem_score_dict, feature_area = predictor.predict(file_path,
-                                                                                                              gender=gender,
-                                                                                                              age=age,
-                                                                                                              task=task)
-        result_dict = {
-            'severity': int(severity),
-            # 'shap_values': shap_dict,
-            'features': feature_dict,
-            'scores': score_dict,
-            'subsystem_scores': subsystem_score_dict,
-            # 'feature_area': feature_area
-        }
+            files.append((task_id, file_path))
+
+        result_dict = explain_ddk.exaplain_ddks(files, gender)
 
     except Exception as e:
         template = "An exception of type {0} occured. Arguments:\n{1!r}"

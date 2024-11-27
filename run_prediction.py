@@ -66,6 +66,7 @@ class ExplainDDK:
             "ddk_pause_average",
             "ddk_pause_std",
         ]
+        self.idx2sev = {0: "normal", 1: "mild-to-moderate", 2: "severe"}
 
     def load_background_data(self):
         df1 = pd.read_csv(
@@ -261,7 +262,7 @@ class ExplainDDK:
             "task_id": task_id,
         }
         feature_dict.update(filtered_features)
-        print(f"[Inference Result] {severity} ({idx2sev[int(severity)]})")
+        print(f"[Inference Result] {severity} ({self.idx2sev[int(severity)]})")
 
         return severity, feature_dict, concat_x
 
@@ -342,7 +343,7 @@ class ExplainDDK:
 
         return results
 
-    def exaplain_ddks(self, audio_files, gender):
+    def exaplain_ddks(self, audio_files, gender: int):
         result_shap_list = []
         result_ig_list = []
         features = []
@@ -399,8 +400,6 @@ if __name__ == "__main__":
     ]
 
     args = args.parse_args()
-
-    idx2sev = {0: "normal", 1: "mild-to-moderate", 2: "severe"}
 
     audio_filepath = args.audio_filepath
 
