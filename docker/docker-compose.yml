@@ -1,0 +1,36 @@
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_ID: ${USER_ID}
+        GROUP_ID: ${GROUP_ID}
+        USER: ${USER}
+        USER_PW: ${USER_PW}
+        ENVIRONMENT: ${ENVIRONMENT}
+    container_name: "${ENVIRONMENT}-xai-ddk-multi"
+    entrypoint: bash /docker-entrypoint.sh
+    environment:
+      - TZ="Asia/Seoul"
+    shm_size: 2gb
+    expose:
+      - "22"
+    networks:
+      - xai_default
+    ports:
+      - "${SSH_PORT}:22"
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            capabilities: [gpu]
+            device_ids: ["1"]
+    volumes:
+        - ../:/root/XAI_DDK_Multi
+        - /home/lifefeel/workspace/data/XAI:/root/XAI_DDK_Multi/data/XAI
+    working_dir: /root/XAI_DDK_Multi
+networks:
+  xai_default:
+    external: true
