@@ -69,10 +69,10 @@ class ExplainDDK:
 
     def load_background_data(self):
         df1 = pd.read_csv(
-            os.path.join(APP_ROOT, "kaist/logs/test_data_1.csv"), dtype={"task_id": str}
+            os.path.join(APP_ROOT, "resources/test_data_1.csv"), dtype={"task_id": str}
         )
         df2 = pd.read_csv(
-            os.path.join(APP_ROOT, "kaist/logs/test_data_2.csv"), dtype={"task_id": str}
+            os.path.join(APP_ROOT, "resources/test_data_2.csv"), dtype={"task_id": str}
         )
 
         # df1과 df2에서 첫 두 컬럼(id, task_id)을 제외한 특성 데이터 추출 및 concat
@@ -98,10 +98,10 @@ class ExplainDDK:
 
     def load_baseline_data(self):
         df1 = pd.read_csv(
-            os.path.join(APP_ROOT, "kaist/logs/test_data_1.csv"), dtype={"task_id": str}
+            os.path.join(APP_ROOT, "resources/test_data_1.csv"), dtype={"task_id": str}
         )
         df2 = pd.read_csv(
-            os.path.join(APP_ROOT, "kaist/logs/test_data_2.csv"), dtype={"task_id": str}
+            os.path.join(APP_ROOT, "resources/test_data_2.csv"), dtype={"task_id": str}
         )
 
         df1_features = df1.iloc[:, 2:].values.astype(np.float32)
@@ -129,9 +129,9 @@ class ExplainDDK:
 
         return output_dict
 
-    def analyze_result(self, df):
-        df_labels = pd.read_csv(os.path.join(APP_ROOT, "kaist/logs/test_labels.csv"))
-        shap_df = pd.read_csv(os.path.join(APP_ROOT, "kaist/logs/test_shap.csv"))
+    def analyze_result(self, df, xai_method="shap"):
+        df_labels = pd.read_csv(os.path.join(APP_ROOT, "resources/test_labels.csv"))
+        shap_df = pd.read_csv(os.path.join(APP_ROOT, f"resources/test_{xai_method}.csv"))
 
         # id를 기준으로 severity 정보를 shap_df에 병합
         shap_df = shap_df.merge(df_labels[["id", "severity"]], on="id", how="left")
@@ -365,9 +365,9 @@ class ExplainDDK:
         result_ig_df = pd.DataFrame(result_ig_list)
         features_df = pd.DataFrame(features)
 
-        shap_dict, final_severity = self.analyze_result(result_shap_df)
+        shap_dict, final_severity = self.analyze_result(result_shap_df, xai_method='shap')
 
-        ig_dict, _ = self.analyze_result(result_ig_df)
+        ig_dict, _ = self.analyze_result(result_ig_df, xai_method='ig')
 
         feature_dict = self.get_feature_dict(features_df)
 
