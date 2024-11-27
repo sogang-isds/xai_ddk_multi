@@ -83,8 +83,11 @@ def DDK(audio, path_base="./"):
     praat_path = os.path.join(path_base, 'praat')
     if not os.path.exists(praat_path):
         raise Exception(f"praat not found at {praat_path}")
+
+    # chmod +x praat
+    os.chmod(praat_path, 0o755)
     
-    os.system(f"{os.path.join(path_base, 'praat')} {os.path.join(path_base, 'F0_Praat.praat')} {audio} {str(tmp_f0)} 75 500 0.02")
+    os.system(f"{praat_path} {os.path.join(path_base, 'F0_Praat.praat')} {audio} {str(tmp_f0)} 75 500 0.02")
     F0=decodeF0(str(tmp_f0))
     
     f0min = 75
